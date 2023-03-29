@@ -1,0 +1,6 @@
+[submodule "depthai-core"]
+	path = depthai-core
+	url = https://github.com/luxonis/depthai-core
+[submodule "allwpilib"]
+	path = allwpilib
+	url = https://github.com/wpilibsuite/allwpilib
