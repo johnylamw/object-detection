@@ -9,6 +9,16 @@ int main(int argc, char** argv) {
         // cout << "Usage: ./detection " << endl;
     }
 
+    // Camera Calibration Parameters
+    // TODO: implement parsing from json.
+    float fx, fy, cx, cy, horizontalFOV, verticalFOV;
+    fx = 616.4480388322528;
+    fy = 616.2370137161736;
+    cx = 428.36537439860047;
+    cy = 247.20381979126174;
+    horizontalFOV = 69;
+    verticalFOV = 54;
+
     // MainReactor Setup:
     string colorMatName = "DAI_COLOR_0";
     string depthMatName = "DAI_DEPTH_0";
@@ -144,4 +154,8 @@ Ptr<SimpleBlobDetector> setupBlobDetection() {
     Ptr<SimpleBlobDetector> detector = cv::SimpleBlobDetector::create(params);
     
     return detector;
+}
+
+float calculateHorizontalBearing(Mat frame, float cx, int centroid_x) {
+    
 }
