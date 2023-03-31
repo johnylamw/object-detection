@@ -60,9 +60,54 @@ int main(int argc, char** argv) {
         detector.detect(morphologyFrame, keypoints);
         
         Mat keypointsFrame;
-        cv::drawKeypoints(colorFrame, keypoints, keypointsFrame, cv::Scalar(0, 0, 255), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+        // cv::drawKeypoints(colorFrame, keypoints, keypointsFrame, cv::Scalar(0, 0, 255), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
 
-        // im_with_keypoints = cv.drawKeypoints(color_frame, keypoints, np.array([]), (0,0,255), cv.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+        // Retrieve keypoints and process them
+        if (keypoints.size() > 0) {
+            for (int i = 0; i < keypoints.size(); i++) {
+                KeyPoint point = keypoints[i];
+                int x = point.pt.x;
+                int y = point.pt.y;
+                double depth = depthFrame.at<double>(y, x); // We have depth of our blobs :)
+                if (depth < 250) {
+                    // Set depth to 0 if it's less than 250mm
+                    depth = 0;
+                }
+
+                // Draw a circle on the center of the blob
+                int dot_size = (int) (point.size / 20);
+                cv::circle(keypointsFrame, cv::Point(x, y), dot_size, cv::Scalar(255, 255, 255));
+            }
+        }
+        
+        /*
+    if len(keypoints) > 0:
+            closestObjectRange = float('inf')
+            closestObjectAngle = None
+            for points in keypoints:
+                x = int(points.pt[0])
+                y = int(points.pt[1])
+                dot_size = int(points.size / 20)
+                depth_value = depth_frame[y][x]
+                # if (depth_value < 250):
+                    # depth_value = 0
+                bearing = self.calculateHorizontalBearing(color_frame, self.cx, x)
+                h = self.calculateHypotenuse(depth_value, abs(bearing))
+                # print(h)
+                cv.circle(im_with_keypoints, (x, y), dot_size, (255, 255, 255), -1)
+                # Adds distance and angle as text
+                cv.putText(im_with_keypoints, str(round(bearing,2)) + "deg " + str(h) + 'mm', (x, y), cv.FONT_HERSHEY_SIMPLEX, 3, 
+                        (0, 0, 255), 3, cv.LINE_AA, False)
+                x, y, z, distance = self.calculateObjectXYZ(x, y, depth_value)
+                # print(f'({x}, {y}, {z}, {distance})')
+                
+                if closestObjectRange > h:
+                    closestObjectRange = h
+                    closestObjectAngle = bearing        
+        
+        */
+
+        // Contours: IGNORE FOR NOW.
 
         if (waitKey(1) == 27) {
             break;
