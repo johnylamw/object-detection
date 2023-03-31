@@ -21,15 +21,40 @@ int main(int argc, char** argv)
         sharedColorMat.waitForFrame();
         sharedDepthMat.waitForFrame();
 
-        Mat colorMat = sharedColorMat.mat;
-        Mat depthMat = sharedDepthMat.mat;
+        Mat colorFrame = sharedColorMat.mat;
+        Mat depthFrame = sharedDepthMat.mat;
 
-        imshow("Color Mat", colorMat);
-        imshow("Depth Mat", depthMat);
+        cv::imshow("Color Mat", colorFrame);
+        cv::imshow("Depth Mat", depthFrame);
+
+        Mat labFrame;
+        cv::cvtColor(colorFrame, labFrame, ColorConversionCodes::COLOR_BGR2Lab);
+
+        // Process Histogram here
+        Mat histogram;
+
+        // Process Backprojection
+        Mat backProjectionFrame;
+        int histogramChannels[] = {1, 2};
+        float aRange[] = {0, 256};
+        float bRange[] = {0, 256};
+        float* histogramRanges[] = {aRange, bRange};
+        cv::calcBackProject(&labFrame, 1, histogramChannels, histogram, backProjectionFrame, (const float**) histogramRanges);
+
+        // Thresholding
+        Mat threshold;
+        Mat thresholdFrame;
+        cv::threshold(backProjectionFrame, threshold, 35, 255, cv::THRESH_BINARY);
+        cv::bitwise_not(threshold, thresholdFrame);
+        
+        // Morphological Transformation
+        Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5, 5));
+        Mat morphologyFrame;
+        cv::morphologyEx(thresholdFrame, morphologyFrame, cv::MORPH_ELLIPSE, kernel, cv::Point(-1, -1), 4, 0 ,cv::morphologyDefaultBorderValue());
 
         if (waitKey(1) == 27) {
             break;
         }
     }
 
-}
+}   
