@@ -79,6 +79,14 @@ int main(int argc, char** argv) {
                 int x = point.pt.x;
                 int y = point.pt.y;
                 double depth = depthFrame.at<double>(y, x); // We have depth of our blobs :)
+
+                // Get the bearing
+                cv::Size frameSize = colorFrame.size();
+                int width = frameSize.width; // horizontal
+                int height = frameSize.height; // vertical
+                float horizontalBearing = calculateBearing(width, horizontalFOV, cx, x);
+                float verticalBearing = calculateBearing(height, verticalFOV, cy, y);
+
                 if (depth < 250) {
                     // Set depth to 0 if it's less than 250mm
                     depth = 0;
@@ -156,6 +164,37 @@ Ptr<SimpleBlobDetector> setupBlobDetection() {
     return detector;
 }
 
-float calculateHorizontalBearing(Mat frame, float cx, int centroid_x) {
-    
+float calculateBearing(float size, float fov, float c, int centroid) {
+    float ratio = fov/size;
+    float diff, bearing;
+    // positive angle
+    if (centroid > c) {
+        diff = centroid - c;
+        bearing = diff * ratio;
+    } else {
+        diff = c - centroid;
+        bearing = -1 * diff * ratio;
+    }
+
+    return bearing;
+
+    // negative angle
+    /*
+        horizontal_fov_ratio = horizontal_fov/img.shape[1]
+        if (centroid_x > cx):
+            # positive angle
+            diff = centroid_x - cx
+            bearing = diff * horizontal_fov_ratio
+        else:
+            # negative angle
+            diff = cx - centroid_x
+            bearing = -1 * diff * horizontal_fov_ratio
+        
+        return bearing
+*/    
+
+}
+
+float calculateVerticalBearing(Mat frame, float fov, float cy, int centroid_y) {
+
 }
