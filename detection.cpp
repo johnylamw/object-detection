@@ -10,6 +10,12 @@
 
 using namespace cv;
 using namespace std;
+
+float fx, fy, cx, cy, horizontalFOV, verticalFOV;
+float link1, link2;
+std::shared_ptr<nt::NetworkTable> blackMesaTable;
+std::shared_ptr<nt::NetworkTable> armTable;
+
 int main(int argc, char** argv) {
     if (argc == 1 || strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0) {
         // cout << "Usage: ./detection " << endl;
@@ -18,17 +24,20 @@ int main(int argc, char** argv) {
     nt::NetworkTableInstance instance = nt::NetworkTableInstance::GetDefault();
     instance.StartClient4("detection");
     instance.SetServerTeam(488);
-    std::shared_ptr<nt::NetworkTable> blackMesaTable = instance.GetTable("SmartDashboard")->GetSubTable("BlackMesa");
+
+    blackMesaTable = instance.GetTable("SmartDashboard")->GetSubTable("BlackMesa");
+    armTable = instance.GetTable("SmartDashboard")->GetSubTable("UnifiedArmSubsystem");
 
     // Camera Calibration Parameters
     // TODO: implement parsing from json.
-    float fx, fy, cx, cy, horizontalFOV, verticalFOV;
     fx = 616.4480388322528;
     fy = 616.2370137161736;
     cx = 428.36537439860047;
     cy = 247.20381979126174;
     horizontalFOV = 69;
     verticalFOV = 54;
+    link1 = 100;
+    link2 = 100;
 
     // MainReactor Setup:
     string colorMatName = "DAI_COLOR_0";
@@ -93,7 +102,7 @@ int main(int argc, char** argv) {
                 KeyPoint point = keypoints[i];
                 int x = point.pt.x;
                 int y = point.pt.y;
-                double depth = depthFrame.at<double>(y, x); // We have depth of our blobs :)
+                int depth = depthFrame.at<int>(y, x); // We have depth of our blobs :)
 
                 // Get the bearing
                 cv::Size frameSize = colorFrame.size();
@@ -131,7 +140,6 @@ int main(int argc, char** argv) {
         blackMesaTable->GetEntry("found").SetBoolean(objectsIdentified, nt::Now());
         blackMesaTable->GetEntry("targetNum").SetInteger(keypoints.size(), nt::Now());
 
-ls
         // Contours: Draw Contours - IGNORE FOR NOW.
 
         if (waitKey(1) == 27) {
@@ -187,8 +195,50 @@ float calculateBearing(float size, float fov, float c, int centroid) {
     return bearing;
 }
 
-float calculateDistance(int depth, float degree) {
+float degreeToRadians(float degree) {
     float pi = std::numbers::pi;
     float radians = (degree * (pi / 180.0));
+    return radians;
+}
+
+float calculateDistance(int depth, float degree) {
+    float radians = degreeToRadians(degree);
     return depth/sin(90 - radians);
+}
+
+float* calculateObjectXYZ(Mat frame, int u, int v, int depth, float* resultDistance) {
+    // Image coordinates
+    cv::Size frameSize = frame.size();
+    float x = u/frameSize.width;
+    float y = v/frameSize.height;
+
+    // Convert to camera coordinates
+    float Xc = (x - cx) / fx;
+    float Yc = (y - cy) / fy;
+    float Zc = 1.0;
+    vector<float> XYZc{Xc * depth, Yc * depth, Zc * depth};
+
+    // Convert to world coordinates in robot space
+    // Retrieve the arm angles via NetworkTables
+    // TODO: might be a double array?
+    double lowerArmPosition = armTable->GetSubTable("LowerArm")->GetEntry("AbsoluteEncoderPosition").GetDouble(-1.0);
+    double upperArmPosition = armTable->GetSubTable("LowerArm")->GetEntry("AbsoluteEncoderPosition").GetDouble(-1.0);
+    vector<float> translationVector = {};
+    float rotationalMatrix[3][3] = {};
+
+    forwardKinematicsSolver(link1, link2, degreeToRadians(lowerArmPosition), degreeToRadians(upperArmPosition), &translationVector, &rotationalMatrix);
+
+    // Dot product and adding to translational vector to get the real world coordinates:
+    float XYZw[3];
+    for (int i = 0; i < sizeof(rotationalMatrix); i++) {
+       XYZw[i] = translationVector[i];
+            for (int j = 0; j < sizeof(rotationalMatrix[i]); j++) {
+            XYZw[i] += rotationalMatrix[i][j] * XYZc[j];
+        }
+    }
+    // Calculate the distance
+    float distance = sqrt(pow(XYZw[0], 2) + pow(XYZw[1], 2) + pow(XYZw[2], 2));
+    *resultDistance = distance;
+
+    return XYZw;
 }
