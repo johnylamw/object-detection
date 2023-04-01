@@ -167,34 +167,15 @@ Ptr<SimpleBlobDetector> setupBlobDetection() {
 float calculateBearing(float size, float fov, float c, int centroid) {
     float ratio = fov/size;
     float diff, bearing;
-    // positive angle
     if (centroid > c) {
+        // positive angle
         diff = centroid - c;
         bearing = diff * ratio;
     } else {
+        // negative angle
         diff = c - centroid;
         bearing = -1 * diff * ratio;
     }
 
     return bearing;
-
-    // negative angle
-    /*
-        horizontal_fov_ratio = horizontal_fov/img.shape[1]
-        if (centroid_x > cx):
-            # positive angle
-            diff = centroid_x - cx
-            bearing = diff * horizontal_fov_ratio
-        else:
-            # negative angle
-            diff = cx - centroid_x
-            bearing = -1 * diff * horizontal_fov_ratio
-        
-        return bearing
-*/    
-
-}
-
-float calculateVerticalBearing(Mat frame, float fov, float cy, int centroid_y) {
-
 }
