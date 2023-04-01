@@ -3,6 +3,7 @@
 #include <shared_mat/shared_mat.h>
 #include <stdio.h>
 #include <math.h>
+#include <array>
 
 #include "networktables/NetworkTableInstance.h"
 #include <networktables/DoubleTopic.h>
@@ -226,7 +227,7 @@ float* calculateObjectXYZ(Mat frame, int u, int v, int depth, float* resultDista
     vector<float> translationVector = {};
     float rotationalMatrix[3][3] = {};
 
-    forwardKinematicsSolver(link1, link2, degreeToRadians(lowerArmPosition), degreeToRadians(upperArmPosition), &translationVector, &rotationalMatrix);
+    forwardKinematicsSolver(link1, link2, degreeToRadians(lowerArmPosition), degreeToRadians(upperArmPosition), translationVector, rotationalMatrix);
 
     // Dot product and adding to translational vector to get the real world coordinates:
     float XYZw[3];
@@ -241,4 +242,62 @@ float* calculateObjectXYZ(Mat frame, int u, int v, int depth, float* resultDista
     *resultDistance = distance;
 
     return XYZw;
+}
+
+void forwardKinematicsSolver(float L1, float L2, float theta1, float theta2, vector<float> tVec, float rotMat[][3]) {
+    float end_effector_transformation[4][4] = {
+        {std::cos(theta1 + theta2), -std::sin(theta1 + theta2), 0, L1 * std::cos(theta1) + L2 * std::cos(theta1 + theta2)},
+        {std::sin(theta1 + theta2), std::cos(theta1 + theta2), 0, L1 * std::sin(theta1) + L2 * std::sin(theta1 + theta2)},
+        {0, 0, 1, 0},
+        {0, 0, 0, 1}
+    };
+
+    // Find the actual rotation and translation
+    // We need a rotational and translation matrix as respect to arm to camera
+    // 90 degrees around the x-axis
+    float camera_rotation_matrix[4][4] = {
+        {1, 0, 0, 0},
+        {0, 0, -1, 0},
+        {0, 1, 0, 0},
+        {0, 0, 0, 1}
+    };
+    
+    // 0.1 meter along the z-axis of the arm
+    float camera_translation_matrix[4][4] = {
+        {1, 0, 0, 0},
+        {0, 1, 0, 0},
+        {0, 0, 1, 0.1},
+        {0, 0, 0, 1}
+    };
+    
+    // Camera to end-effector tranformations
+    float final_transformation[4][4];
+    multiplyMatrices(end_effector_transformation, camera_rotation_matrix, final_transformation);
+    multiplyMatrices(final_transformation, camera_translation_matrix, final_transformation);
+    
+    // Extract the rotation matrix and translation vector
+    array<array<float, 3>, 3> rot_mat = {{
+        {final_transformation[0][0], final_transformation[0][1], final_transformation[0][2]},
+        {final_transformation[1][0], final_transformation[1][1], final_transformation[1][2]},
+        {final_transformation[2][0], final_transformation[2][1], final_transformation[2][2]}
+    }};
+
+    vector<float> tran_vector{final_transformation[0][3], final_transformation[1][3], final_transformation[2][3]};
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            rot_mat[i][j] = final_transformation[i][j];
+        }
+    }
+}
+
+// Multiplies two 4x4 matrices
+void multiplyMatrices(float A[][4], float B[][4], float result[][4]) {
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            result[i][j] = 0;
+            for (int k = 0; k < 4; k++) {
+                result[i][j] += A[i][k] * B[k][j];
+            }
+        }
+    }
 }
