@@ -17,6 +17,159 @@ float link1, link2;
 std::shared_ptr<nt::NetworkTable> blackMesaTable;
 std::shared_ptr<nt::NetworkTable> armTable;
 
+Ptr<SimpleBlobDetector> setupBlobDetection() {
+    cv::SimpleBlobDetector::Params params;
+    
+    params.minDistBetweenBlobs = 20;
+    params.minThreshold = 0;
+    params.maxThreshold = 10;
+    params.thresholdStep = 10;
+    params.minRepeatability = 1;
+
+    params.filterByColor = true;
+    params.blobColor = 0;
+    
+    params.filterByArea = true;
+    params.minArea = 1000;
+    params.maxArea = 240000;
+
+    params.filterByCircularity = false;
+    // params.minCircularity = 0.1
+    // params.maxCircularity = 0.5 
+    
+    params.filterByInertia = false;
+    // params.minInertiaRatio = 0.01
+    // params.maxInertiaRatio = 0.80
+    
+    params.filterByConvexity = false;
+    
+    Ptr<SimpleBlobDetector> detector = cv::SimpleBlobDetector::create(params);
+    
+    return detector;
+}
+
+float calculateBearing(float size, float fov, float c, int centroid) {
+    float ratio = fov/size;
+    float diff, bearing;
+    if (centroid > c) {
+        // positive angle
+        diff = centroid - c;
+        bearing = diff * ratio;
+    } else {
+        // negative angle
+        diff = c - centroid;
+        bearing = -1 * diff * ratio;
+    }
+
+    return bearing;
+}
+
+float degreeToRadians(float degree) {
+    float pi = std::numbers::pi;
+    float radians = (degree * (pi / 180.0));
+    return radians;
+}
+
+float calculateDistance(int depth, float degree) {
+    float radians = degreeToRadians(degree);
+    return depth/sin(90 - radians);
+}
+
+// Multiplies two 4x4 matrices
+void multiplyMatrices(float A[][4], float B[][4], float result[][4]) {
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            result[i][j] = 0;
+            for (int k = 0; k < 4; k++) {
+                result[i][j] += A[i][k] * B[k][j];
+            }
+        }
+    }
+}
+
+void forwardKinematicsSolver(float L1, float L2, float theta1, float theta2, vector<float> tVec, float rotMat[][3]) {
+    float end_effector_transformation[4][4] = {
+        {std::cos(theta1 + theta2), -std::sin(theta1 + theta2), 0, L1 * std::cos(theta1) + L2 * std::cos(theta1 + theta2)},
+        {std::sin(theta1 + theta2), std::cos(theta1 + theta2), 0, L1 * std::sin(theta1) + L2 * std::sin(theta1 + theta2)},
+        {0, 0, 1, 0},
+        {0, 0, 0, 1}
+    };
+
+    // Find the actual rotation and translation
+    // We need a rotational and translation matrix as respect to arm to camera
+    // 90 degrees around the x-axis
+    float camera_rotation_matrix[4][4] = {
+        {1, 0, 0, 0},
+        {0, 0, -1, 0},
+        {0, 1, 0, 0},
+        {0, 0, 0, 1}
+    };
+    
+    // 0.1 meter along the z-axis of the arm
+    float camera_translation_matrix[4][4] = {
+        {1, 0, 0, 0},
+        {0, 1, 0, 0},
+        {0, 0, 1, 0.1},
+        {0, 0, 0, 1}
+    };
+    
+    // Camera to end-effector tranformations
+    float final_transformation[4][4];
+    multiplyMatrices(end_effector_transformation, camera_rotation_matrix, final_transformation);
+    multiplyMatrices(final_transformation, camera_translation_matrix, final_transformation);
+    
+    // Extract the rotation matrix and translation vector
+    array<array<float, 3>, 3> rot_mat = {{
+        {final_transformation[0][0], final_transformation[0][1], final_transformation[0][2]},
+        {final_transformation[1][0], final_transformation[1][1], final_transformation[1][2]},
+        {final_transformation[2][0], final_transformation[2][1], final_transformation[2][2]}
+    }};
+
+    vector<float> tran_vector{final_transformation[0][3], final_transformation[1][3], final_transformation[2][3]};
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            rot_mat[i][j] = final_transformation[i][j];
+        }
+    }
+}
+
+float* calculateObjectXYZ(Mat frame, int u, int v, int depth, float* resultDistance) {
+    // Image coordinates
+    cv::Size frameSize = frame.size();
+    float x = u/frameSize.width;
+    float y = v/frameSize.height;
+
+    // Convert to camera coordinates
+    float Xc = (x - cx) / fx;
+    float Yc = (y - cy) / fy;
+    float Zc = 1.0;
+    vector<float> XYZc{Xc * depth, Yc * depth, Zc * depth};
+
+    // Convert to world coordinates in robot space
+    // Retrieve the arm angles via NetworkTables
+    // TODO: might be a double array?
+    double lowerArmPosition = armTable->GetSubTable("LowerArm")->GetEntry("AbsoluteEncoderPosition").GetDouble(-1.0);
+    double upperArmPosition = armTable->GetSubTable("LowerArm")->GetEntry("AbsoluteEncoderPosition").GetDouble(-1.0);
+    vector<float> translationVector = {};
+    float rotationalMatrix[3][3] = {};
+
+    forwardKinematicsSolver(link1, link2, degreeToRadians(lowerArmPosition), degreeToRadians(upperArmPosition), translationVector, rotationalMatrix);
+
+    // Dot product and adding to translational vector to get the real world coordinates:
+    float *XYZw = new float[3];
+    for (int i = 0; i < 3; i++) {
+       XYZw[i] = translationVector[i];
+            for (int j = 0; j < 3; j++) {
+            XYZw[i] += rotationalMatrix[i][j] * XYZc[j];
+        }
+    }
+    // Calculate the distance
+    float distance = sqrt(pow(XYZw[0], 2) + pow(XYZw[1], 2) + pow(XYZw[2], 2));
+    *resultDistance = distance;
+
+    return XYZw;
+}
+
 int main(int argc, char** argv) {
     if (argc == 1 || strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0) {
         // cout << "Usage: ./detection " << endl;
@@ -128,7 +281,7 @@ int main(int argc, char** argv) {
                 cv::circle(keypointsFrame, cv::Point(x, y), dot_size, cv::Scalar(255, 255, 255));
 
                 // Add the depth and bearing of the showing
-                string distanceDisplay = to_string(horizontalBearing) << "deg" << to_string(distance) << " mm";
+                string distanceDisplay = to_string(horizontalBearing) + "deg" + to_string(distance) + " mm";
                 cv::putText(keypointsFrame, distanceDisplay, cv::Point(x, y), cv::FONT_HERSHEY_SIMPLEX, 3, cv::Scalar(0, 0, 255), 3, cv::LINE_AA, false);
                 if (closestObjectDistance > distance) {
                     closestObjectDistance = distance;
@@ -153,156 +306,3 @@ int main(int argc, char** argv) {
         }
     }
 }   
-
-Ptr<SimpleBlobDetector> setupBlobDetection() {
-    cv::SimpleBlobDetector::Params params;
-    
-    params.minDistBetweenBlobs = 20;
-    params.minThreshold = 0;
-    params.maxThreshold = 10;
-    params.thresholdStep = 10;
-    params.minRepeatability = 1;
-
-    params.filterByColor = true;
-    params.blobColor = 0;
-    
-    params.filterByArea = true;
-    params.minArea = 1000;
-    params.maxArea = 240000;
-
-    params.filterByCircularity = false;
-    // params.minCircularity = 0.1
-    // params.maxCircularity = 0.5 
-    
-    params.filterByInertia = false;
-    // params.minInertiaRatio = 0.01
-    // params.maxInertiaRatio = 0.80
-    
-    params.filterByConvexity = false;
-    
-    Ptr<SimpleBlobDetector> detector = cv::SimpleBlobDetector::create(params);
-    
-    return detector;
-}
-
-float calculateBearing(float size, float fov, float c, int centroid) {
-    float ratio = fov/size;
-    float diff, bearing;
-    if (centroid > c) {
-        // positive angle
-        diff = centroid - c;
-        bearing = diff * ratio;
-    } else {
-        // negative angle
-        diff = c - centroid;
-        bearing = -1 * diff * ratio;
-    }
-
-    return bearing;
-}
-
-float degreeToRadians(float degree) {
-    float pi = std::numbers::pi;
-    float radians = (degree * (pi / 180.0));
-    return radians;
-}
-
-float calculateDistance(int depth, float degree) {
-    float radians = degreeToRadians(degree);
-    return depth/sin(90 - radians);
-}
-
-float* calculateObjectXYZ(Mat frame, int u, int v, int depth, float* resultDistance) {
-    // Image coordinates
-    cv::Size frameSize = frame.size();
-    float x = u/frameSize.width;
-    float y = v/frameSize.height;
-
-    // Convert to camera coordinates
-    float Xc = (x - cx) / fx;
-    float Yc = (y - cy) / fy;
-    float Zc = 1.0;
-    vector<float> XYZc{Xc * depth, Yc * depth, Zc * depth};
-
-    // Convert to world coordinates in robot space
-    // Retrieve the arm angles via NetworkTables
-    // TODO: might be a double array?
-    double lowerArmPosition = armTable->GetSubTable("LowerArm")->GetEntry("AbsoluteEncoderPosition").GetDouble(-1.0);
-    double upperArmPosition = armTable->GetSubTable("LowerArm")->GetEntry("AbsoluteEncoderPosition").GetDouble(-1.0);
-    vector<float> translationVector = {};
-    float rotationalMatrix[3][3] = {};
-
-    forwardKinematicsSolver(link1, link2, degreeToRadians(lowerArmPosition), degreeToRadians(upperArmPosition), translationVector, rotationalMatrix);
-
-    // Dot product and adding to translational vector to get the real world coordinates:
-    float XYZw[3];
-    for (int i = 0; i < sizeof(rotationalMatrix); i++) {
-       XYZw[i] = translationVector[i];
-            for (int j = 0; j < sizeof(rotationalMatrix[i]); j++) {
-            XYZw[i] += rotationalMatrix[i][j] * XYZc[j];
-        }
-    }
-    // Calculate the distance
-    float distance = sqrt(pow(XYZw[0], 2) + pow(XYZw[1], 2) + pow(XYZw[2], 2));
-    *resultDistance = distance;
-
-    return XYZw;
-}
-
-void forwardKinematicsSolver(float L1, float L2, float theta1, float theta2, vector<float> tVec, float rotMat[][3]) {
-    float end_effector_transformation[4][4] = {
-        {std::cos(theta1 + theta2), -std::sin(theta1 + theta2), 0, L1 * std::cos(theta1) + L2 * std::cos(theta1 + theta2)},
-        {std::sin(theta1 + theta2), std::cos(theta1 + theta2), 0, L1 * std::sin(theta1) + L2 * std::sin(theta1 + theta2)},
-        {0, 0, 1, 0},
-        {0, 0, 0, 1}
-    };
-
-    // Find the actual rotation and translation
-    // We need a rotational and translation matrix as respect to arm to camera
-    // 90 degrees around the x-axis
-    float camera_rotation_matrix[4][4] = {
-        {1, 0, 0, 0},
-        {0, 0, -1, 0},
-        {0, 1, 0, 0},
-        {0, 0, 0, 1}
-    };
-    
-    // 0.1 meter along the z-axis of the arm
-    float camera_translation_matrix[4][4] = {
-        {1, 0, 0, 0},
-        {0, 1, 0, 0},
-        {0, 0, 1, 0.1},
-        {0, 0, 0, 1}
-    };
-    
-    // Camera to end-effector tranformations
-    float final_transformation[4][4];
-    multiplyMatrices(end_effector_transformation, camera_rotation_matrix, final_transformation);
-    multiplyMatrices(final_transformation, camera_translation_matrix, final_transformation);
-    
-    // Extract the rotation matrix and translation vector
-    array<array<float, 3>, 3> rot_mat = {{
-        {final_transformation[0][0], final_transformation[0][1], final_transformation[0][2]},
-        {final_transformation[1][0], final_transformation[1][1], final_transformation[1][2]},
-        {final_transformation[2][0], final_transformation[2][1], final_transformation[2][2]}
-    }};
-
-    vector<float> tran_vector{final_transformation[0][3], final_transformation[1][3], final_transformation[2][3]};
-    for (int i = 0; i < 3; i++) {
-        for (int j = 0; j < 3; j++) {
-            rot_mat[i][j] = final_transformation[i][j];
-        }
-    }
-}
-
-// Multiplies two 4x4 matrices
-void multiplyMatrices(float A[][4], float B[][4], float result[][4]) {
-    for (int i = 0; i < 4; i++) {
-        for (int j = 0; j < 4; j++) {
-            result[i][j] = 0;
-            for (int k = 0; k < 4; k++) {
-                result[i][j] += A[i][k] * B[k][j];
-            }
-        }
-    }
-}
