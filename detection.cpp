@@ -18,7 +18,6 @@ int main(int argc, char** argv) {
     nt::NetworkTableInstance instance = nt::NetworkTableInstance::GetDefault();
     instance.StartClient4("detection");
     instance.SetServerTeam(488);
-
     std::shared_ptr<nt::NetworkTable> blackMesaTable = instance.GetTable("SmartDashboard")->GetSubTable("BlackMesa");
 
     // Camera Calibration Parameters
@@ -85,7 +84,8 @@ int main(int argc, char** argv) {
         cv::drawKeypoints(colorFrame, keypoints, keypointsFrame, cv::Scalar(0, 0, 255), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
         
         // Retrieve keypoints and process them
-        if (keypoints.size() > 0) {
+        bool objectsIdentified = keypoints.size() > 0;
+        if (objectsIdentified) {
             double closestObjectDistance = 99999999;
             double closestObjectAngle = 99999999;
             
@@ -122,8 +122,16 @@ int main(int argc, char** argv) {
                     closestObjectAngle = horizontalBearing;
                 }
             }
+            // Update NT w/ Object State
+            blackMesaTable->GetEntry("distance").SetFloat(closestObjectDistance, nt::Now());
+            blackMesaTable->GetEntry("angle").SetFloat(closestObjectAngle, nt::Now());
         }
 
+        // Update identification state:
+        blackMesaTable->GetEntry("found").SetBoolean(objectsIdentified, nt::Now());
+        blackMesaTable->GetEntry("targetNum").SetInteger(keypoints.size(), nt::Now());
+
+ls
         // Contours: Draw Contours - IGNORE FOR NOW.
 
         if (waitKey(1) == 27) {
