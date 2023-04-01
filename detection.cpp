@@ -2,6 +2,8 @@
 #include <opencv2/opencv.hpp>
 #include <shared_mat/shared_mat.h>
 #include <stdio.h>
+#include <math.h>
+
 using namespace cv;
 using namespace std;
 int main(int argc, char** argv) {
@@ -70,8 +72,8 @@ int main(int argc, char** argv) {
         detector.detect(morphologyFrame, keypoints);
         
         Mat keypointsFrame;
-        // cv::drawKeypoints(colorFrame, keypoints, keypointsFrame, cv::Scalar(0, 0, 255), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
-
+        cv::drawKeypoints(colorFrame, keypoints, keypointsFrame, cv::Scalar(0, 0, 255), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+        
         // Retrieve keypoints and process them
         if (keypoints.size() > 0) {
             for (int i = 0; i < keypoints.size(); i++) {
@@ -82,8 +84,8 @@ int main(int argc, char** argv) {
 
                 // Get the bearing
                 cv::Size frameSize = colorFrame.size();
-                int width = frameSize.width; // horizontal
-                int height = frameSize.height; // vertical
+                int width = frameSize.width;    // horizontal
+                int height = frameSize.height;  // vertical
                 float horizontalBearing = calculateBearing(width, horizontalFOV, cx, x);
                 float verticalBearing = calculateBearing(height, verticalFOV, cy, y);
 
@@ -92,9 +94,16 @@ int main(int argc, char** argv) {
                     depth = 0;
                 }
 
+                float distance = calculateDistance(depth, horizontalBearing);
+
                 // Draw a circle on the center of the blob
                 int dot_size = (int) (point.size / 20);
                 cv::circle(keypointsFrame, cv::Point(x, y), dot_size, cv::Scalar(255, 255, 255));
+
+                // Add the depth and bearing of the showing
+                string distanceDisplay = to_string(horizontalBearing) << "deg" << to_string(distance) << " mm";
+                cv::putText(keypointsFrame, distanceDisplay, cv::Point(x, y), cv::FONT_HERSHEY_SIMPLEX, 3, cv::Scalar(0, 0, 255), 3, cv::LINE_AA, false);
+
             }
         }
         
@@ -178,4 +187,10 @@ float calculateBearing(float size, float fov, float c, int centroid) {
     }
 
     return bearing;
+}
+
+float calculateDistance(int depth, float degree) {
+    float pi = std::numbers::pi;
+    float radians = (degree * (pi / 180.0));
+    return depth/sin(90 - radians);
 }
