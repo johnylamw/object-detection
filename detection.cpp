@@ -98,6 +98,7 @@ int main(int argc, char** argv) {
         if (objectsIdentified) {
             double closestObjectDistance = 99999999;
             double closestObjectAngle = 99999999;
+            float closestRobotToObjectDistance;
             
             for (int i = 0; i < keypoints.size(); i++) {
                 KeyPoint point = keypoints[i];
@@ -118,6 +119,9 @@ int main(int argc, char** argv) {
                 }
 
                 float distance = calculateDistance(depth, horizontalBearing);
+                float robotToObjectDistance;
+                float* XYZ = calculateObjectXYZ(colorFrame, x, y, distance, &robotToObjectDistance);
+
 
                 // Draw a circle on the center of the blob
                 int dot_size = (int) (point.size / 20);
@@ -126,14 +130,15 @@ int main(int argc, char** argv) {
                 // Add the depth and bearing of the showing
                 string distanceDisplay = to_string(horizontalBearing) << "deg" << to_string(distance) << " mm";
                 cv::putText(keypointsFrame, distanceDisplay, cv::Point(x, y), cv::FONT_HERSHEY_SIMPLEX, 3, cv::Scalar(0, 0, 255), 3, cv::LINE_AA, false);
-
                 if (closestObjectDistance > distance) {
                     closestObjectDistance = distance;
+                    closestRobotToObjectDistance = robotToObjectDistance;
                     closestObjectAngle = horizontalBearing;
                 }
             }
             // Update NT w/ Object State
-            blackMesaTable->GetEntry("distance").SetFloat(closestObjectDistance, nt::Now());
+            blackMesaTable->GetEntry("cameraToObjectDistance").SetFloat(closestObjectDistance, nt::Now());
+            blackMesaTable->GetEntry("robotToObjectDistance").SetFloat(closestRobotToObjectDistance, nt::Now());
             blackMesaTable->GetEntry("angle").SetFloat(closestObjectAngle, nt::Now());
         }
 
