@@ -4,12 +4,22 @@
 #include <stdio.h>
 #include <math.h>
 
+#include "networktables/NetworkTableInstance.h"
+#include <networktables/DoubleTopic.h>
+#include <networktables/StringTopic.h>
+
 using namespace cv;
 using namespace std;
 int main(int argc, char** argv) {
     if (argc == 1 || strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0) {
         // cout << "Usage: ./detection " << endl;
     }
+    // Setup NetworkTables
+    nt::NetworkTableInstance instance = nt::NetworkTableInstance::GetDefault();
+    instance.StartClient4("detection");
+    instance.SetServerTeam(488);
+
+    std::shared_ptr<nt::NetworkTable> blackMesaTable = instance.GetTable("SmartDashboard")->GetSubTable("BlackMesa");
 
     // Camera Calibration Parameters
     // TODO: implement parsing from json.
