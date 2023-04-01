@@ -76,6 +76,9 @@ int main(int argc, char** argv) {
         
         // Retrieve keypoints and process them
         if (keypoints.size() > 0) {
+            double closestObjectDistance = 99999999;
+            double closestObjectAngle = 99999999;
+            
             for (int i = 0; i < keypoints.size(); i++) {
                 KeyPoint point = keypoints[i];
                 int x = point.pt.x;
@@ -104,37 +107,14 @@ int main(int argc, char** argv) {
                 string distanceDisplay = to_string(horizontalBearing) << "deg" << to_string(distance) << " mm";
                 cv::putText(keypointsFrame, distanceDisplay, cv::Point(x, y), cv::FONT_HERSHEY_SIMPLEX, 3, cv::Scalar(0, 0, 255), 3, cv::LINE_AA, false);
 
+                if (closestObjectDistance > distance) {
+                    closestObjectDistance = distance;
+                    closestObjectAngle = horizontalBearing;
+                }
             }
         }
-        
-        /*
-    if len(keypoints) > 0:
-            closestObjectRange = float('inf')
-            closestObjectAngle = None
-            for points in keypoints:
-                x = int(points.pt[0])
-                y = int(points.pt[1])
-                dot_size = int(points.size / 20)
-                depth_value = depth_frame[y][x]
-                # if (depth_value < 250):
-                    # depth_value = 0
-                bearing = self.calculateHorizontalBearing(color_frame, self.cx, x)
-                h = self.calculateHypotenuse(depth_value, abs(bearing))
-                # print(h)
-                cv.circle(im_with_keypoints, (x, y), dot_size, (255, 255, 255), -1)
-                # Adds distance and angle as text
-                cv.putText(im_with_keypoints, str(round(bearing,2)) + "deg " + str(h) + 'mm', (x, y), cv.FONT_HERSHEY_SIMPLEX, 3, 
-                        (0, 0, 255), 3, cv.LINE_AA, False)
-                x, y, z, distance = self.calculateObjectXYZ(x, y, depth_value)
-                # print(f'({x}, {y}, {z}, {distance})')
-                
-                if closestObjectRange > h:
-                    closestObjectRange = h
-                    closestObjectAngle = bearing        
-        
-        */
 
-        // Contours: IGNORE FOR NOW.
+        // Contours: Draw Contours - IGNORE FOR NOW.
 
         if (waitKey(1) == 27) {
             break;
